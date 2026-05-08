@@ -1,0 +1,21 @@
+# Datos locales
+data/
+
+# Entorno
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# Modelos
+*.pkl
+*.joblib
+
+# OS
+Thumbs.db
+.DS_Store
