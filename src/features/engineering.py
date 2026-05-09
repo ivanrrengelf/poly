@@ -17,6 +17,8 @@ PROCESSED_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "pro
 
 cfg = FeatureConfig()
 
+TARGET_MARKET_ID = "INTRODUCIR_ID_AQUI"
+
 
 def load_raw_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Carga los CSVs crudos."""
@@ -210,6 +212,22 @@ def build_features() -> pd.DataFrame:
     log.info(f"Eliminadas {before - len(prices)} filas sin target")
 
     # Guardar
+    output_path = os.path.join(PROCESSED_DIR, "features.csv")
+    prices.to_csv(output_path, index=False)
+    log.info(f"Dataset guardado: {output_path} ({len(prices)} filas, {len(prices.columns)} columnas)")
+
+    # Resumen de features
+    feature_cols = [c for c in prices.columns
+                    if c not in ["timestamp", "datetime", "token_id", "market_id",
+                                 "question", "target"]]
+    log.info(f"Features generadas: {len(feature_cols)}")
+    log.info(f"Columnas: {feature_cols}")
+
+    return prices
+
+
+if __name__ == "__main__":
+    build_features()
     output_path = os.path.join(PROCESSED_DIR, "features.csv")
     prices.to_csv(output_path, index=False)
     log.info(f"Dataset guardado: {output_path} ({len(prices)} filas, {len(prices.columns)} columnas)")

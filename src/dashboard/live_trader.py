@@ -29,6 +29,8 @@ DB_PATH = os.path.join(DATA_DIR, "live_portfolio.db")
 
 tc = TradingConfig()
 
+TARGET_MARKET_ID = "INTRODUCIR_ID_AQUI"
+
 
 class LiveTrader:
     def __init__(self):
@@ -122,68 +124,31 @@ class LiveTrader:
             conn.commit()
 
     async def fetch_live_data(self) -> pd.DataFrame:
-        """Descarga historial reciente y precio actual para todos los mercados activos."""
-        log.info("Obteniendo mercados activos de Gamma API...")
-        # Usar todos los eventos para la prueba en vivo y asegurar que encuentre trades
-        events = await self.gamma.get_all_events_paginated(max_pages=2)
+        """Descarga historial reciente y precio actual para el mercado aislado."""
+        log.info(f"Obteniendo historia de precios para el mercado objetivo: {TARGET_MARKET_ID}")
         
-        # Extraer markets de los eventos
-        markets = []
-        for e in events:
-            markets.extend(e.get("markets", []))
-            if len(markets) >= 50:
-                break
-        markets = markets[:50]
-        
-        all_prices = []
-        for m in markets:
-            market_id = m.get("conditionId")
-            if not market_id:
-                continue
-                
-            # Extract token IDs properly
-            import json
-            token_ids_raw = m.get("clobTokenIds", "[]")
-            if isinstance(token_ids_raw, str):
-                try:
-                    token_ids = json.loads(token_ids_raw)
-                except Exception:
-                    token_ids = []
-            else:
-                token_ids = token_ids_raw
-                
-            if not token_ids or len(token_ids) == 0:
-                continue
-                
-            token_id_yes = token_ids[0]
-                
-            # Obtener historia de Clob
-            hist = await self.clob.get_prices_history(token_id_yes, fidelity=500)
-            if not hist or "history" not in hist:
-                continue
-                
-            # polymarket prices-history API returns a list in "history"
-            data = hist["history"] if isinstance(hist, dict) and "history" in hist else hist
-            if not isinstance(data, list) or len(data) == 0:
-                continue
-                
-            df_hist = pd.DataFrame(data)
-            if "t" in df_hist.columns and "p" in df_hist.columns:
-                df_hist.rename(columns={"t": "timestamp", "p": "price"}, inplace=True)
-                
-            df_hist["market_id"] = token_id_yes
-            df_hist["question"] = m.get("question", f"Market {market_id}")
-            df_hist["liquidity"] = float(m.get("liquidity", 1000) or 1000)
-            
-            # Asegurar orden temporal
-            df_hist["timestamp"] = pd.to_numeric(df_hist["timestamp"])
-            df_hist.sort_values("timestamp", inplace=True)
-            all_prices.append(df_hist)
-            
-        if not all_prices:
+        hist = await self.clob.get_prices_history(TARGET_MARKET_ID, fidelity=500)
+        if not hist or "history" not in hist:
+            log.warning("No se encontraron datos o el formato de historia es incorrecto.")
             return pd.DataFrame()
             
-        return pd.concat(all_prices, ignore_index=True)
+        data = hist["history"] if isinstance(hist, dict) and "history" in hist else hist
+        if not isinstance(data, list) or len(data) == 0:
+            return pd.DataFrame()
+            
+        df_hist = pd.DataFrame(data)
+        if "t" in df_hist.columns and "p" in df_hist.columns:
+            df_hist.rename(columns={"t": "timestamp", "p": "price"}, inplace=True)
+            
+        df_hist["market_id"] = TARGET_MARKET_ID
+        df_hist["question"] = f"Market {TARGET_MARKET_ID}"
+        df_hist["liquidity"] = 1000.0
+        
+        # Asegurar orden temporal
+        df_hist["timestamp"] = pd.to_numeric(df_hist["timestamp"])
+        df_hist.sort_values("timestamp", inplace=True)
+        
+        return df_hist
 
     def calculate_live_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Aplica engineering a la ventana de datos para sacar la fila actual."""
