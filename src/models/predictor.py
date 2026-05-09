@@ -1,6 +1,6 @@
 """Modelo de predicción para mercados de Polymarket.
 
-Utiliza LightGBM para predecir la dirección futura del precio 
+Utiliza LightGBM para predecir el precio continuo futuro 
 basado en features técnicas y de microestructura.
 """
 import os
@@ -71,8 +71,8 @@ class PolyPredictor:
         test_data = lgb.Dataset(X_test, label=y_test, reference=train_data)
 
         params = {
-            "objective": "binary",
-            "metric": ["binary_logloss", "auc"],
+            "objective": "regression",
+            "metric": ["rmse", "mae"],
             "boosting_type": "gbdt",
             "learning_rate": self.hp.learning_rate,
             "num_leaves": self.hp.num_leaves,
@@ -106,19 +106,16 @@ class PolyPredictor:
 
     def _evaluate(self, X_test: pd.DataFrame, y_test: pd.Series):
         """Calcula y muestra las métricas en el set de prueba."""
-        preds_prob = self.model.predict(X_test)
-        preds_class = (preds_prob > 0.5).astype(int)
+        preds_price = self.model.predict(X_test)
 
-        acc = accuracy_score(y_test, preds_class)
-        brier = brier_score_loss(y_test, preds_prob)
-        loss = log_loss(y_test, preds_prob)
+        mse = mean_squared_error(y_test, preds_price)
+        mae = mean_absolute_error(y_test, preds_price)
 
         log.info("=" * 40)
         log.info("RESULTADOS EN TEST (FUTURO)")
         log.info("=" * 40)
-        log.info(f"Accuracy:    {acc:.4f} (>0.50 significa que tiene edge predictivo)")
-        log.info(f"Brier Score: {brier:.4f} (Más cercano a 0 es mejor)")
-        log.info(f"Log Loss:    {loss:.4f} (Más cercano a 0 es mejor)")
+        log.info(f"MSE: {mse:.4f} (El objetivo es < 0.0001)")
+        log.info(f"MAE: {mae:.4f} (Un error menor a 0.01 / 1 céntimo es el objetivo para ser competitivos en el spread)")
         
         # Feature Importance
         importance = self.model.feature_importance(importance_type="gain")
@@ -146,7 +143,7 @@ class PolyPredictor:
         log.info(f"Modelo cargado desde {path}")
 
     def predict(self, features: pd.DataFrame) -> np.ndarray:
-        """Genera probabilidades predictivas para datos nuevos."""
+        """Genera precios predictivos para datos nuevos."""
         if self.model is None:
             raise ValueError("El modelo no está entrenado o cargado.")
         
