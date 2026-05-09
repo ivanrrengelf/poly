@@ -4,6 +4,9 @@ Ejecuta una simulación de paper trading (Backtest) usando el modelo predictivo
 y sirve los resultados a la interfaz web.
 """
 import os
+import time
+from datetime import datetime, timezone
+
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +20,17 @@ from src.utils.logger import get_logger
 log = get_logger("dashboard_api")
 
 app = FastAPI(title="Polymarket Prediction Dashboard")
+FEATURES_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "data", "processed", "features.csv"
+)
+REQUIRED_FEATURE_COLUMNS = {
+    "timestamp",
+    "price",
+    "datetime",
+    "token_id",
+    "question",
+    "target",
+}
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +52,82 @@ _SIMULATION_CACHE = None
 tc = TradingConfig()
 
 
+def _validate_features_schema(df: pd.DataFrame) -> None:
+    """Valida que el CSV de features tenga las columnas mínimas esperadas."""
+    missing_columns = sorted(REQUIRED_FEATURE_COLUMNS.difference(df.columns))
+    if missing_columns:
+        raise ValueError(
+            "El dataset de features no cumple el esquema requerido. "
+            f"Faltan columnas: {', '.join(missing_columns)}"
+        )
+
+    if df.empty:
+        raise ValueError("El dataset de features está vacío")
+
+
+def _load_and_validate_features(predictor: PolyPredictor) -> pd.DataFrame:
+    """Carga el CSV de features y normaliza el esquema mínimo esperado."""
+    df = predictor.load_data()
+    _validate_features_schema(df)
+
+    df = df.copy()
+    df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
+    if df["datetime"].isna().any():
+        raise ValueError("La columna datetime contiene valores inválidos")
+
+    if (df["price"] <= 0).any():
+        raise ValueError("La columna price contiene valores no positivos")
+
+    if (df["price"] > 1).any():
+        raise ValueError("La columna price contiene valores fuera del rango [0, 1]")
+
+    return df.sort_values("timestamp").reset_index(drop=True)
+
+
+def _simulate_trade(
+    row: pd.Series,
+    probability: float,
+    capital: float,
+) -> tuple[float, dict[str, object] | None, str | None]:
+    """Simula una posición YES con precio de entrada/salida y costos."""
+    entry_price = float(row["price"])
+    exit_price = 1.0 if int(row["target"]) == 1 else 0.0
+
+    if entry_price <= 0:
+        return capital, None, "invalid_entry_price"
+
+    bet_size = capital * tc.max_position_pct * tc.kelly_fraction
+    if bet_size <= 0:
+        return capital, None, "invalid_bet_size"
+
+    effective_entry_price = entry_price * (1 + tc.slippage_pct)
+    effective_exit_price = exit_price * (1 - tc.slippage_pct)
+    shares = bet_size / effective_entry_price
+    gross_proceeds = shares * effective_exit_price
+    fees = (bet_size + gross_proceeds) * tc.execution_fee_pct
+    pnl = gross_proceeds - bet_size - fees
+    new_capital = capital + pnl
+
+    question = row.get("question")
+    if question is None or (isinstance(question, float) and pd.isna(question)):
+        market_label = f"Market {row.get('market_id', 'UNKNOWN')}"
+    else:
+        market_label = str(question)
+
+    trade = {
+        "time": row["datetime"],
+        "market": market_label,
+        "prob": float(probability),
+        "entry_price": entry_price,
+        "exit_price": exit_price,
+        "bet_size": float(bet_size),
+        "fees": float(fees),
+        "pnl": float(pnl),
+        "status": "WIN" if pnl >= 0 else "LOSS",
+    }
+    return new_capital, trade, None
+
+
 def run_simulation():
     """Ejecuta el backtest en los datos de prueba y cachea los resultados."""
     global _SIMULATION_CACHE
@@ -45,96 +135,78 @@ def run_simulation():
         return _SIMULATION_CACHE
 
     log.info("Iniciando simulación de paper trading...")
-    
-    # Validación de precondiciones: features.csv debe existir
-    features_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "data", "processed", "features.csv"
-    )
-    if not os.path.exists(features_path):
+
+    if not os.path.exists(FEATURES_PATH):
         error_msg = (
-            f"Dataset de features no encontrado en {features_path}. "
+            f"Dataset de features no encontrado en {FEATURES_PATH}. "
             "Ejecuta primero: collector.py → engineering.py"
         )
         log.error(error_msg)
         return {"error": error_msg, "status": "MISSING_DATA"}
-    
+
     predictor = PolyPredictor()
     
     try:
-        # 1. Cargar datos y modelo
-        df = predictor.load_data()
-        
-        # Simplemente re-entrenamos el walk-forward aquí para asegurar 
-        # que tenemos el modelo fresco, pero en un entorno real se cargaría.
+        load_start = time.perf_counter()
+        df = _load_and_validate_features(predictor)
+        load_elapsed = time.perf_counter() - load_start
+        log.info(
+            "Datos cargados y validados en %.3fs (%s filas, %s columnas)",
+            load_elapsed,
+            len(df),
+            len(df.columns),
+        )
+
+        train_start = time.perf_counter()
         predictor.train_walk_forward(df)
-        
-        # Obtener los datos de test (último 20%)
-        df = df.sort_values("timestamp").reset_index(drop=True)
         split_idx = int(len(df) * (1 - predictor.hp.validation_split))
         test_df = df.iloc[split_idx:].copy()
-        
-        # Hacer predicciones en el test set
+        train_elapsed = time.perf_counter() - train_start
+        log.info("Entrenamiento walk-forward completado en %.3fs", train_elapsed)
+
+        predict_start = time.perf_counter()
         X_test = test_df[predictor.feature_names]
         preds_prob = predictor.model.predict(X_test)
         test_df["pred_prob"] = preds_prob
-        
-        # 2. Lógica de Simulación
+
+        predict_elapsed = time.perf_counter() - predict_start
+        log.info("Predicciones generadas en %.3fs", predict_elapsed)
+
+        simulation_start = time.perf_counter()
         capital = tc.initial_capital
         portfolio_history = []
         trades_history = []
-        
+
         wins = 0
         losses = 0
         
-        for idx, row in test_df.iterrows():
-            # Guardar valor del portafolio en el tiempo
+        for _, row in test_df.iterrows():
             portfolio_history.append({
                 "time": row["datetime"],
                 "value": capital
             })
             
             prob = row["pred_prob"]
-            target = row["target"]
-            
-            # Condición de Edge (ventaja)
-            # Si predecimos > 55% de subir, y el mercado está al 50% (asumido para simplificar), tenemos un 5% de edge.
-            # Aquí usaremos una señal simple: prob > 0.5 + min_edge_threshold
-            if prob > (0.5 + tc.min_edge_threshold):
-                # Señal de COMPRA
-                bet_size = capital * tc.max_position_pct * tc.kelly_fraction
-                
-                # Si el target fue 1 (subió), ganamos. Si fue 0, perdemos lo apostado.
-                # En Polymarket real depende del precio de compra. Asumiremos compra a prob real y venta a 1 o 0.
-                if target == 1:
-                    ganancia = bet_size * 0.5  # Asumiendo ROI conservador por operación
-                    capital += ganancia
-                    wins += 1
-                    status = "WIN"
-                else:
-                    capital -= bet_size
-                    losses += 1
-                    status = "LOSS"
-                    ganancia = -bet_size
-                    
-                question = row.get("question")
-                if question is None or (isinstance(question, float) and pd.isna(question)):
-                    market_label = f"Market {row.get('market_id', 'UNKNOWN')}"
-                else:
-                    market_label = str(question)
+            edge = prob - float(row["price"])
 
-                trades_history.append({
-                    "time": row["datetime"],
-                    "market": market_label,
-                    "prob": float(prob),
-                    "bet_size": float(bet_size),
-                    "pnl": float(ganancia),
-                    "status": status
-                })
+            if edge > tc.min_edge_threshold:
+                capital, trade, error = _simulate_trade(row, prob, capital)
+                if error is not None:
+                    log.warning("Trade omitido en %s: %s", row.get("datetime"), error)
+                    continue
+
+                if trade is not None:
+                    trades_history.append(trade)
+                    if trade["pnl"] >= 0:
+                        wins += 1
+                    else:
+                        losses += 1
 
         win_rate = wins / (wins + losses) if (wins + losses) > 0 else 0
+
+        simulation_elapsed = time.perf_counter() - simulation_start
+        log.info("Simulación de trades completada en %.3fs", simulation_elapsed)
         
-        # Reducir a unos 100 puntos para el gráfico del frontend
-        # para no saturar la UI con miles de puntos
         if len(portfolio_history) > 100:
             step = len(portfolio_history) // 100
             portfolio_chart = portfolio_history[::step]
@@ -148,9 +220,15 @@ def run_simulation():
                 "roi_pct": ((capital - tc.initial_capital) / tc.initial_capital) * 100,
                 "total_trades": wins + losses,
                 "win_rate": win_rate * 100,
+                "runtime_seconds": {
+                    "load": round(load_elapsed, 4),
+                    "train": round(train_elapsed, 4),
+                    "predict": round(predict_elapsed, 4),
+                    "simulation": round(simulation_elapsed, 4),
+                },
             },
             "chart_data": portfolio_chart,
-            "recent_trades": trades_history[-50:]  # Últimos 50 trades
+            "recent_trades": trades_history[-50:]
         }
         
         log.info(f"Simulación terminada. ROI: {_SIMULATION_CACHE['metrics']['roi_pct']:.2f}%")
@@ -180,6 +258,17 @@ async def get_simulation():
 async def root():
     """Redirige al dashboard."""
     return {"message": "API Running. Go to /app/index.html to view the dashboard."}
+
+
+@app.get("/api/health")
+async def healthcheck():
+    """Endpoint simple de health para monitoreo."""
+    return {
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "simulation_cached": _SIMULATION_CACHE is not None,
+        "features_available": os.path.exists(FEATURES_PATH),
+    }
 
 
 if __name__ == "__main__":

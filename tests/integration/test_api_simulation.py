@@ -22,8 +22,10 @@ class DummyPredictor:
             {
                 "timestamp": ts,
                 "datetime": pd.to_datetime(ts, unit="s"),
+                "token_id": ["tok-1"] * n,
                 "market_id": ["m1"] * n,
                 "question": ["q"] * n,
+                "price": [0.4] * n,
                 "f1": [0.1] * n,
                 "target": [1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
             }
@@ -53,6 +55,7 @@ def test_run_simulation_success(monkeypatch):
     assert "metrics" in result
     assert "chart_data" in result
     assert "recent_trades" in result
+    assert "runtime_seconds" in result["metrics"]
 
 
 def test_api_endpoint_returns_json(monkeypatch):
@@ -66,6 +69,16 @@ def test_api_endpoint_returns_json(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert "metrics" in body
+
+
+def test_api_health_endpoint():
+    client = TestClient(dashboard_api.app)
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert "timestamp" in body
 
 
 def test_root_endpoint():
