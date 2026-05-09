@@ -116,9 +116,15 @@ def run_simulation():
                     status = "LOSS"
                     ganancia = -bet_size
                     
+                question = row.get("question")
+                if question is None or (isinstance(question, float) and pd.isna(question)):
+                    market_label = f"Market {row.get('market_id', 'UNKNOWN')}"
+                else:
+                    market_label = str(question)
+
                 trades_history.append({
                     "time": row["datetime"],
-                    "market": row.get("question", f"Market {row['market_id']}"),
+                    "market": market_label,
                     "prob": float(prob),
                     "bet_size": float(bet_size),
                     "pnl": float(ganancia),
