@@ -8,7 +8,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     async function fetchSimulationData() {
         try {
-            const response = await fetch('/api/simulation');
+            const response = await fetch('/api/live');
             if (!response.ok) throw new Error('Error fetching data');
             const data = await response.json();
             
@@ -24,7 +24,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             updateMetrics(data.metrics);
             updateChart(data.chart_data);
-            updateTable(data.recent_trades);
+            
+            // Unir active y recent trades para que el usuario pueda ver lo que está pasando AHORA
+            const allTrades = [...(data.active_trades || []), ...(data.recent_trades || [])];
+            updateTable(allTrades);
 
         } catch (error) {
             console.error(error);
@@ -54,6 +57,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     function updateChart(chartData) {
+        if (!chartData || chartData.length === 0) {
+            // No chart data available in live mode yet
+            return;
+        }
+        
         const ctx = document.getElementById('portfolioChart').getContext('2d');
         
         const labels = chartData.map(d => {
@@ -128,22 +136,35 @@ document.addEventListener("DOMContentLoaded", async () => {
         const tbody = document.getElementById('trades-body');
         tbody.innerHTML = '';
 
+        if (!trades) return;
+
         // Invertir para mostrar los más recientes arriba
         trades.reverse().forEach(trade => {
             const tr = document.createElement('tr');
             
-            const date = new Date(trade.time);
+            const tradeTime = trade.entry_time || trade.time;
+            const date = new Date(tradeTime);
             const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             
-            const statusClass = trade.status === 'WIN' ? 'status-win' : 'status-loss';
-            const pnlSign = trade.pnl >= 0 ? '+' : '';
+            const pnl = parseFloat(trade.pnl || 0);
+            const statusClass = pnl > 0 ? 'status-win' : (pnl < 0 ? 'status-loss' : '');
+            const pnlSign = pnl > 0 ? '+' : '';
+            
+            const typeColor = trade.type === 'LONG' ? 'color: var(--accent-neon); font-weight: 600;' : 'color: #f472b6; font-weight: 600;';
+            const edge = parseFloat(trade.edge || 0);
+            const edgeSign = edge > 0 ? '+' : '';
+            
+            const marketName = trade.question || trade.market || 'Unknown Market';
+            const prob = parseFloat(trade.predicted_prob || trade.prob || 0);
             
             tr.innerHTML = `
                 <td>${dateStr}</td>
-                <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${trade.market}">${trade.market}</td>
-                <td>${(trade.prob * 100).toFixed(1)}%</td>
+                <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${marketName}">${marketName}</td>
+                <td style="${typeColor}">${trade.type}</td>
+                <td>${edgeSign}${edge.toFixed(1)}%</td>
+                <td>${(prob * 100).toFixed(1)}%</td>
                 <td>${formatCurrency(trade.bet_size)}</td>
-                <td class="${statusClass}">${pnlSign}${formatCurrency(trade.pnl)}</td>
+                <td class="${statusClass}">${pnlSign}${formatCurrency(pnl)}</td>
             `;
             tbody.appendChild(tr);
         });

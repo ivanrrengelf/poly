@@ -42,3 +42,7 @@ class TradingConfig:
     min_liquidity_usd: float = 1000.0
     min_volume_24h_usd: float = 500.0
     initial_capital: float = 100.0         # Capital inicial simulado ($100)
+    
+    # Riesgo Dinámico
+    take_profit_pct: float = 0.15          # Cerrar si gana 15%
+    stop_loss_pct: float = -0.20           # Cerrar si pierde 20%

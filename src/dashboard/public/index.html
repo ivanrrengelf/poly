@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polymarket Alpha Dashboard</title>
+    <title>PolyAlpha Live Trader</title>
     
     <!-- Google Fonts: Outfit for a modern, sleek look -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -40,8 +40,8 @@
         
         <header>
             <div>
-                <h1>Paper Trading Simulator</h1>
-                <p class="subtitle">Walk-forward validation results & simulated portfolio</p>
+                <h1>Live Quant Trader</h1>
+                <p class="subtitle">Real-time production paper-trading portfolio</p>
             </div>
             <div class="user-profile">
                 <div class="avatar"></div>
@@ -51,7 +51,7 @@
         <!-- Loading State -->
         <div id="loader" class="loader-container">
             <div class="spinner"></div>
-            <p>Running ML Backtest Simulation...</p>
+            <p>Fetching Live Portfolio Data...</p>
         </div>
 
         <!-- Dashboard Content (hidden until loaded) -->
@@ -97,6 +97,8 @@
                             <tr>
                                 <th>Date</th>
                                 <th>Market</th>
+                                <th>Type</th>
+                                <th>Edge</th>
                                 <th>Confidence</th>
                                 <th>Bet Size</th>
                                 <th>P&L</th>
