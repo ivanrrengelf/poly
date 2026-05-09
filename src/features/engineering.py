@@ -156,8 +156,8 @@ def add_trade_features(prices_df: pd.DataFrame,
 
 
 def add_target(df: pd.DataFrame, horizon: int = 5) -> pd.DataFrame:
-    """Añade la variable target: precio continuo futuro en N periodos."""
-    df["target"] = df.groupby("market_id")["price"].shift(-horizon)
+    """Añade la variable target: diferencia de precio continuo futuro en N periodos (delta)."""
+    df["target"] = df.groupby("market_id")["price"].shift(-horizon) - df["price"]
     return df
 
 

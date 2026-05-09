@@ -284,7 +284,7 @@ class LiveTrader:
                         now = datetime.datetime.now()
                         target_close = now + datetime.timedelta(hours=5)
                         
-                        log.info(f"🚀 OPEN VIRTUAL LIMIT ORDER: {'LONG' if is_long else 'SHORT'} on {row['question'][:30]}... Expected Price: {precio_esperado:.3f} Edge: {edge*100:.1f}% Bet: ${bet_size:.2f} @ {order_price:.3f}")
+                        log.info(f"🚀 OPEN VIRTUAL LIMIT ORDER: {'LONG' if is_long else 'SHORT'} on {row['question'][:30]}... Expected Price: {precio_esperado_absoluto:.3f} Edge: {edge*100:.1f}% Bet: ${bet_size:.2f} @ {order_price:.3f}")
                         
                         cursor.execute('''
                             INSERT INTO active_trades 
@@ -292,7 +292,7 @@ class LiveTrader:
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             market_id, row["question"], "LONG" if is_long else "SHORT",
-                            float(order_price), float(precio_esperado), float(edge), float(bet_size), float(liquidity),
+                            float(order_price), float(precio_esperado_absoluto), float(edge), float(bet_size), float(liquidity),
                             now.isoformat(), target_close.isoformat()
                         ))
             
@@ -410,4 +410,5 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
+    asyncio.run(main())
     asyncio.run(main())

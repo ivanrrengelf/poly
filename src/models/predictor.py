@@ -106,13 +106,13 @@ class PolyPredictor:
 
     def _evaluate(self, X_test: pd.DataFrame, y_test: pd.Series):
         """Calcula y muestra las métricas en el set de prueba."""
-        preds_price = self.model.predict(X_test)
+        preds_diff = self.model.predict(X_test)
 
-        mse = mean_squared_error(y_test, preds_price)
-        mae = mean_absolute_error(y_test, preds_price)
+        mse = mean_squared_error(y_test, preds_diff)
+        mae = mean_absolute_error(y_test, preds_diff)
 
         log.info("=" * 40)
-        log.info("RESULTADOS EN TEST (FUTURO)")
+        log.info("RESULTADOS EN TEST (DIFERENCIA DE PRECIO)")
         log.info("=" * 40)
         log.info(f"MSE: {mse:.4f} (El objetivo es < 0.0001)")
         log.info(f"MAE: {mae:.4f} (Un error menor a 0.01 / 1 céntimo es el objetivo para ser competitivos en el spread)")
