@@ -7,7 +7,7 @@ import os
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 from config.settings import ModelHyperparams
 from src.utils.logger import get_logger

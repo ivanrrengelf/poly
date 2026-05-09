@@ -223,8 +223,8 @@ class LiveTrader:
             latest_features[c] = 0.0 # Llenar columnas faltantes si las hay (ej. trades pressure)
             
         X = latest_features[self.predictor.feature_names]
-        preds_prob = self.predictor.model.predict(X)
-        latest_features["pred_prob"] = preds_prob
+        preds_expected = self.predictor.model.predict(X)
+        latest_features["precio_esperado"] = preds_expected
 
         total_cap, avail_cap = self.get_portfolio_state()
         new_avail_cap = avail_cap
@@ -236,14 +236,42 @@ class LiveTrader:
                 if new_avail_cap < 1.0:
                     break # Sin capital
                     
-                price = row["price"]
-                prob = row["pred_prob"]
-                edge = prob - price
+                market_id = row["market_id"]
+                precio_esperado = row["precio_esperado"]
+                
+                try:
+                    book = await self.clob.get_book(market_id)
+                    bids = book.get("bids", [])
+                    asks = book.get("asks", [])
+                    if not bids or not asks:
+                        continue
+                    
+                    best_bid = float(bids[0]["price"])
+                    best_ask = float(asks[0]["price"])
+                except Exception as e:
+                    log.error(f"Error fetching book for {market_id}: {e}")
+                    continue
+                
+                # Cálculo de Edge real vs el libro de órdenes
+                edge_long = precio_esperado - best_ask
+                edge_short = best_bid - precio_esperado
+                
+                edge = 0
+                is_long = False
+                order_price = 0
+                
+                # Evaluar qué lado del mercado tiene mayor ventaja y configurar la orden límite
+                if edge_long > edge_short and edge_long > tc.min_edge_threshold:
+                    edge = edge_long
+                    is_long = True
+                    order_price = best_bid + 0.01 if best_bid + 0.01 < best_ask else best_bid
+                elif edge_short > edge_long and edge_short > tc.min_edge_threshold:
+                    edge = edge_short
+                    is_long = False
+                    order_price = best_ask - 0.01 if best_ask - 0.01 > best_bid else best_ask
                 
                 # Condición de entrada
-                if abs(edge) > tc.min_edge_threshold:
-                    is_long = edge > 0
-                    
+                if edge > tc.min_edge_threshold:
                     max_bet = total_cap * tc.max_position_pct * tc.kelly_fraction
                     liquidity = float(row.get("liquidity", 1000))
                     liquidity_limit = liquidity * 0.02
@@ -256,15 +284,15 @@ class LiveTrader:
                         now = datetime.datetime.now()
                         target_close = now + datetime.timedelta(hours=5)
                         
-                        log.info(f"🚀 OPEN VIRTUAL TRADE: {'LONG' if is_long else 'SHORT'} on {row['question'][:30]}... Edge: {edge*100:.1f}% Bet: ${bet_size:.2f}")
+                        log.info(f"🚀 OPEN VIRTUAL LIMIT ORDER: {'LONG' if is_long else 'SHORT'} on {row['question'][:30]}... Expected Price: {precio_esperado:.3f} Edge: {edge*100:.1f}% Bet: ${bet_size:.2f} @ {order_price:.3f}")
                         
                         cursor.execute('''
                             INSERT INTO active_trades 
                             (market_id, question, type, entry_price, predicted_prob, edge, bet_size, liquidity_at_entry, entry_time, target_close_time)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
-                            row["market_id"], row["question"], "LONG" if is_long else "SHORT",
-                            float(price), float(prob), float(edge), float(bet_size), float(liquidity),
+                            market_id, row["question"], "LONG" if is_long else "SHORT",
+                            float(order_price), float(precio_esperado), float(edge), float(bet_size), float(liquidity),
                             now.isoformat(), target_close.isoformat()
                         ))
             
