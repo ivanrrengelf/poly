@@ -119,38 +119,58 @@ def add_position_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_trade_features(prices_df: pd.DataFrame,
                         trades_df: pd.DataFrame) -> pd.DataFrame:
-    """Añade features derivadas de los trades (volumen, presión compra/venta)."""
+    """Añade features derivadas de los trades (volumen, presión compra/venta).
+    
+    Calcula solo con trades históricos (t < timestamp actual), sin data leakage.
+    """
     if trades_df.empty or "timestamp" not in trades_df.columns:
-        log.info("No hay datos de trades, saltando trade features")
+        log.info("No hay datos de trades, inicializando con defaults")
+        prices_df["trade_count_1h"] = 0
+        prices_df["trade_volume_1h"] = 0.0
+        prices_df["buy_pressure_1h"] = 0.5
         return prices_df
+
+    # Inicializar columnas con valores por defecto
+    prices_df["trade_count_1h"] = 0
+    prices_df["trade_volume_1h"] = 0.0
+    prices_df["buy_pressure_1h"] = 0.5
 
     # Agregar trades por market_id y ventana temporal
     trades_df["timestamp"] = pd.to_numeric(trades_df["timestamp"], errors="coerce")
     trades_df["size"] = pd.to_numeric(trades_df["size"], errors="coerce")
+    
+    # Filtrar filas con timestamp inválido
+    trades_df = trades_df.dropna(subset=["timestamp", "size"])
 
     for market_id, group in prices_df.groupby("market_id"):
         market_trades = trades_df[trades_df["market_id"] == market_id]
         if market_trades.empty:
             continue
 
-        # Para cada punto de precio, contar trades recientes
+        # Para cada punto de precio, contar trades recientes (ventana pasada)
         for idx, row in group.iterrows():
             ts = row["timestamp"]
-            # Trades en la última hora
+            if pd.isna(ts):
+                continue
+            
+            # Trades estrictamente anteriores a ts (sin forward-looking bias)
             recent = market_trades[
                 (market_trades["timestamp"] >= ts - 3600) &
                 (market_trades["timestamp"] < ts)
             ]
+            
             prices_df.at[idx, "trade_count_1h"] = len(recent)
-            prices_df.at[idx, "trade_volume_1h"] = recent["size"].sum()
-
+            
             if len(recent) > 0:
+                vol_sum = recent["size"].sum()
+                prices_df.at[idx, "trade_volume_1h"] = vol_sum
+                
                 buy_vol = recent[recent["side"] == "BUY"]["size"].sum()
                 sell_vol = recent[recent["side"] == "SELL"]["size"].sum()
                 total = buy_vol + sell_vol
-                prices_df.at[idx, "buy_pressure_1h"] = buy_vol / total if total > 0 else 0.5
-            else:
-                prices_df.at[idx, "buy_pressure_1h"] = 0.5
+                prices_df.at[idx, "buy_pressure_1h"] = (
+                    buy_vol / total if total > 0 else 0.5
+                )
 
     return prices_df
 
@@ -208,6 +228,15 @@ def build_features() -> pd.DataFrame:
         prices["market_id"] = prices["market_id"].astype(str)
         prices = prices.merge(market_meta, on="market_id", how="left",
                               suffixes=("", "_market"))
+
+    # NaN handling: Forward fill seguido de backward fill para features lag
+    # (es normal que primeras filas de cada market_id tengan NaN en lags tempranos)
+    before_nan_count = prices.isna().sum().sum()
+    prices = prices.groupby("market_id", group_keys=False).apply(
+        lambda x: x.fillna(method="ffill").fillna(method="bfill")
+    )
+    after_nan_count = prices.isna().sum().sum()
+    log.info(f"NaNs reducidos: {before_nan_count} -> {after_nan_count}")
 
     # Eliminar filas sin target (últimas N de cada mercado)
     before = len(prices)

@@ -45,6 +45,19 @@ def run_simulation():
         return _SIMULATION_CACHE
 
     log.info("Iniciando simulación de paper trading...")
+    
+    # Validación de precondiciones: features.csv debe existir
+    features_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "data", "processed", "features.csv"
+    )
+    if not os.path.exists(features_path):
+        error_msg = (
+            f"Dataset de features no encontrado en {features_path}. "
+            "Ejecuta primero: collector.py → engineering.py"
+        )
+        log.error(error_msg)
+        return {"error": error_msg, "status": "MISSING_DATA"}
+    
     predictor = PolyPredictor()
     
     try:
@@ -137,9 +150,18 @@ def run_simulation():
         log.info(f"Simulación terminada. ROI: {_SIMULATION_CACHE['metrics']['roi_pct']:.2f}%")
         return _SIMULATION_CACHE
 
+    except FileNotFoundError as e:
+        error_msg = f"Archivo no encontrado: {e}"
+        log.error(error_msg)
+        return {"error": error_msg, "status": "FILE_ERROR"}
+    except ValueError as e:
+        error_msg = f"Error en datos o configuración: {e}"
+        log.error(error_msg)
+        return {"error": error_msg, "status": "DATA_ERROR"}
     except Exception as e:
-        log.error(f"Error en simulación: {e}")
-        return {"error": str(e)}
+        error_msg = f"Error inesperado en simulación: {type(e).__name__}: {e}"
+        log.error(error_msg)
+        return {"error": error_msg, "status": "RUNTIME_ERROR"}
 
 
 @app.get("/api/simulation")
