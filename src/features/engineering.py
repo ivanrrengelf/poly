@@ -233,7 +233,7 @@ def build_features() -> pd.DataFrame:
     # (es normal que primeras filas de cada market_id tengan NaN en lags tempranos)
     before_nan_count = prices.isna().sum().sum()
     prices = prices.groupby("market_id", group_keys=False).apply(
-        lambda x: x.fillna(method="ffill").fillna(method="bfill")
+        lambda x: x.ffill().bfill()
     )
     after_nan_count = prices.isna().sum().sum()
     log.info(f"NaNs reducidos: {before_nan_count} -> {after_nan_count}")
