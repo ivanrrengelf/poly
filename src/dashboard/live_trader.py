@@ -223,8 +223,7 @@ class LiveTrader:
             latest_features[c] = 0.0 # Llenar columnas faltantes si las hay (ej. trades pressure)
             
         X = latest_features[self.predictor.feature_names]
-        preds_expected = self.predictor.model.predict(X)
-        latest_features["precio_esperado"] = preds_expected
+        latest_features["pred_diff"] = self.predictor.model.predict(X)
 
         total_cap, avail_cap = self.get_portfolio_state()
         new_avail_cap = avail_cap
@@ -237,7 +236,9 @@ class LiveTrader:
                     break # Sin capital
                     
                 market_id = row["market_id"]
-                precio_esperado = row["precio_esperado"]
+                pred_diff = row["pred_diff"]
+                precio_actual = row["price"]
+                precio_esperado_absoluto = precio_actual + pred_diff
                 
                 try:
                     book = await self.clob.get_book(market_id)
@@ -253,8 +254,8 @@ class LiveTrader:
                     continue
                 
                 # Cálculo de Edge real vs el libro de órdenes
-                edge_long = precio_esperado - best_ask
-                edge_short = best_bid - precio_esperado
+                edge_long = precio_esperado_absoluto - best_ask
+                edge_short = best_bid - precio_esperado_absoluto
                 
                 edge = 0
                 is_long = False
@@ -410,5 +411,4 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
     asyncio.run(main())
