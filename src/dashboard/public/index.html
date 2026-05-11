@@ -1,23 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Polymarket Alpha Dashboard</title>
-    
+
     <!-- Google Fonts: Outfit for a modern, sleek look -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    
+
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-    
+
     <!-- Sidebar -->
     <nav class="sidebar">
         <div class="logo">
@@ -37,7 +39,7 @@
 
     <!-- Main Content -->
     <main class="dashboard">
-        
+
         <header>
             <div>
                 <h1>Paper Trading Simulator</h1>
@@ -56,7 +58,7 @@
 
         <!-- Dashboard Content (hidden until loaded) -->
         <div id="content" class="hidden">
-            
+
             <!-- Key Metrics Cards -->
             <section class="metrics-grid">
                 <div class="card glass">
@@ -90,19 +92,69 @@
 
             <!-- Trades Table -->
             <section class="trades-section card glass">
-                <h2>Recent Signals</h2>
+                <h2>Executed Trades</h2>
                 <div class="table-container">
                     <table id="trades-table">
                         <thead>
                             <tr>
-                                <th>Date</th>
+                                <th>Entry</th>
+                                <th>Exit</th>
                                 <th>Market</th>
                                 <th>Confidence</th>
+                                <th>Entry Price</th>
+                                <th>Exit Price</th>
                                 <th>Bet Size</th>
                                 <th>P&L</th>
+                                <th>Hold</th>
                             </tr>
                         </thead>
                         <tbody id="trades-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Open Positions -->
+            <section class="trades-section card glass">
+                <h2>Open Positions</h2>
+                <div class="table-container">
+                    <table id="open-positions-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Market</th>
+                                <th>Entry Price</th>
+                                <th>Bet Size</th>
+                                <th>Confidence</th>
+                                <th>Edge</th>
+                            </tr>
+                        </thead>
+                        <tbody id="open-positions-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Trade Journal -->
+            <section class="trades-section card glass">
+                <h2>Trade Journal</h2>
+                <div class="table-container">
+                    <table id="journal-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Market</th>
+                                <th>Question</th>
+                                <th>Status</th>
+                                <th>Entry</th>
+                                <th>Exit</th>
+                                <th>P&L</th>
+                                <th>Hold</th>
+                            </tr>
+                        </thead>
+                        <tbody id="journal-body">
                             <!-- Populated by JS -->
                         </tbody>
                     </table>
@@ -113,4 +165,5 @@
 
     <script src="app.js"></script>
 </body>
+
 </html>

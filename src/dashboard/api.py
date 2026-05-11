@@ -15,6 +15,7 @@ import uvicorn
 
 from config.settings import TradingConfig
 from src.models.predictor import PolyPredictor
+from src.trading.paper_trader import PaperTrader
 from src.utils.logger import get_logger
 
 log = get_logger("dashboard_api")
@@ -84,50 +85,6 @@ def _load_and_validate_features(predictor: PolyPredictor) -> pd.DataFrame:
     return df.sort_values("timestamp").reset_index(drop=True)
 
 
-def _simulate_trade(
-    row: pd.Series,
-    probability: float,
-    capital: float,
-) -> tuple[float, dict[str, object] | None, str | None]:
-    """Simula una posición YES con precio de entrada/salida y costos."""
-    entry_price = float(row["price"])
-    exit_price = 1.0 if int(row["target"]) == 1 else 0.0
-
-    if entry_price <= 0:
-        return capital, None, "invalid_entry_price"
-
-    bet_size = capital * tc.max_position_pct * tc.kelly_fraction
-    if bet_size <= 0:
-        return capital, None, "invalid_bet_size"
-
-    effective_entry_price = entry_price * (1 + tc.slippage_pct)
-    effective_exit_price = exit_price * (1 - tc.slippage_pct)
-    shares = bet_size / effective_entry_price
-    gross_proceeds = shares * effective_exit_price
-    fees = (bet_size + gross_proceeds) * tc.execution_fee_pct
-    pnl = gross_proceeds - bet_size - fees
-    new_capital = capital + pnl
-
-    question = row.get("question")
-    if question is None or (isinstance(question, float) and pd.isna(question)):
-        market_label = f"Market {row.get('market_id', 'UNKNOWN')}"
-    else:
-        market_label = str(question)
-
-    trade = {
-        "time": row["datetime"],
-        "market": market_label,
-        "prob": float(probability),
-        "entry_price": entry_price,
-        "exit_price": exit_price,
-        "bet_size": float(bet_size),
-        "fees": float(fees),
-        "pnl": float(pnl),
-        "status": "WIN" if pnl >= 0 else "LOSS",
-    }
-    return new_capital, trade, None
-
-
 def run_simulation():
     """Ejecuta el backtest en los datos de prueba y cachea los resultados."""
     global _SIMULATION_CACHE
@@ -173,53 +130,25 @@ def run_simulation():
         log.info("Predicciones generadas en %.3fs", predict_elapsed)
 
         simulation_start = time.perf_counter()
-        capital = tc.initial_capital
-        portfolio_history = []
-        trades_history = []
-
-        wins = 0
-        losses = 0
-        
-        for _, row in test_df.iterrows():
-            portfolio_history.append({
-                "time": row["datetime"],
-                "value": capital
-            })
-            
-            prob = row["pred_prob"]
-            edge = prob - float(row["price"])
-
-            if edge > tc.min_edge_threshold:
-                capital, trade, error = _simulate_trade(row, prob, capital)
-                if error is not None:
-                    log.warning("Trade omitido en %s: %s", row.get("datetime"), error)
-                    continue
-
-                if trade is not None:
-                    trades_history.append(trade)
-                    if trade["pnl"] >= 0:
-                        wins += 1
-                    else:
-                        losses += 1
-
-        win_rate = wins / (wins + losses) if (wins + losses) > 0 else 0
+        trader = PaperTrader(config=tc)
+        trading_result = trader.run(test_df, preds_prob)
 
         simulation_elapsed = time.perf_counter() - simulation_start
         log.info("Simulación de trades completada en %.3fs", simulation_elapsed)
-        
-        if len(portfolio_history) > 100:
-            step = len(portfolio_history) // 100
-            portfolio_chart = portfolio_history[::step]
-        else:
-            portfolio_chart = portfolio_history
+
+        portfolio_history = trading_result.chart_data
+        trades_history = trading_result.recent_trades
+        portfolio_chart = (
+            portfolio_history[:: max(1, len(portfolio_history) // 100)]
+            if len(portfolio_history) > 100
+            else portfolio_history
+        )
 
         _SIMULATION_CACHE = {
             "metrics": {
-                "initial_capital": tc.initial_capital,
-                "final_capital": capital,
-                "roi_pct": ((capital - tc.initial_capital) / tc.initial_capital) * 100,
-                "total_trades": wins + losses,
-                "win_rate": win_rate * 100,
+                **trading_result.metrics,
+                "total_trades": trading_result.metrics["closed_trades"],
+                "win_rate": trading_result.metrics["win_rate"],
                 "runtime_seconds": {
                     "load": round(load_elapsed, 4),
                     "train": round(train_elapsed, 4),
@@ -228,10 +157,16 @@ def run_simulation():
                 },
             },
             "chart_data": portfolio_chart,
-            "recent_trades": trades_history[-50:]
+            "recent_trades": trades_history[-50:],
+            "trade_journal": trading_result.trade_journal,
+            "open_positions": trading_result.open_positions,
+            "journal_path": trader.journal_path,
         }
         
-        log.info(f"Simulación terminada. ROI: {_SIMULATION_CACHE['metrics']['roi_pct']:.2f}%")
+        log.info(
+            "Simulación terminada. ROI: %.2f%%",
+            _SIMULATION_CACHE["metrics"]["roi_pct"],
+        )
         return _SIMULATION_CACHE
 
     except FileNotFoundError as e:

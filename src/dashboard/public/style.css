@@ -2,15 +2,15 @@
     --bg-dark: #07090e;
     --bg-panel: rgba(20, 24, 34, 0.6);
     --glass-border: rgba(255, 255, 255, 0.05);
-    
+
     --accent-blue: #3b82f6;
     --accent-neon: #00f0ff;
     --win-color: #10b981;
     --loss-color: #ef4444;
-    
+
     --text-main: #f3f4f6;
     --text-muted: #9ca3af;
-    
+
     --font-main: 'Outfit', sans-serif;
 }
 
@@ -27,9 +27,9 @@ body {
     display: flex;
     min-height: 100vh;
     overflow-x: hidden;
-    
+
     /* Subtle background glow effect */
-    background-image: 
+    background-image:
         radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
         radial-gradient(circle at 85% 30%, rgba(0, 240, 255, 0.05) 0%, transparent 40%);
 }
@@ -126,9 +126,17 @@ body {
 }
 
 @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-    70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
 }
 
 /* Main Content */
@@ -163,7 +171,7 @@ header h1 {
     border-radius: 50%;
     background: linear-gradient(135deg, #4f46e5, #ec4899);
     border: 2px solid var(--bg-dark);
-    box-shadow: 0 0 0 2px rgba(255,255,255,0.1);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
 }
 
 /* Loader */
@@ -180,14 +188,16 @@ header h1 {
 .spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid rgba(255,255,255,0.1);
+    border: 3px solid rgba(255, 255, 255, 0.1);
     border-radius: 50%;
     border-top-color: var(--accent-neon);
     animation: spin 1s ease-in-out infinite;
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .hidden {
@@ -302,12 +312,12 @@ th {
 
 td {
     padding: 14px 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.02);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
     font-size: 0.95rem;
 }
 
 tr:hover td {
-    background: rgba(255,255,255,0.02);
+    background: rgba(255, 255, 255, 0.02);
 }
 
 .status-win {
@@ -320,13 +330,22 @@ tr:hover td {
     font-weight: 600;
 }
 
+.empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 1.25rem 1rem;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
     .sidebar {
         width: 80px;
         padding: 2rem 1rem;
     }
-    .logo h2, .nav-links li, .status-indicator span {
+
+    .logo h2,
+    .nav-links li,
+    .status-indicator span {
         display: none;
     }
 }

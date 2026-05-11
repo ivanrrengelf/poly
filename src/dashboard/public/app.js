@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", async () => {
-    
+
     // Configuración del gráfico (Chart.js)
     Chart.defaults.color = '#9ca3af';
     Chart.defaults.font.family = "'Outfit', sans-serif";
@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             const response = await fetch('/api/simulation');
             if (!response.ok) throw new Error('Error fetching data');
             const data = await response.json();
-            
+
             if (data.error) {
                 console.error(data.error);
                 alert("Error en simulación: " + data.error);
@@ -25,6 +25,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             updateMetrics(data.metrics);
             updateChart(data.chart_data);
             updateTable(data.recent_trades);
+            updateOpenPositions(data.open_positions || []);
+            updateJournal(data.trade_journal || []);
 
         } catch (error) {
             console.error(error);
@@ -33,16 +35,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     function formatCurrency(value) {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+        return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value);
+    }
+
+    function getMarketLabel(trade) {
+        return trade.market ?? trade.question ?? trade.market_id ?? 'Unknown market';
     }
 
     function updateMetrics(metrics) {
         const formatPct = (val) => (val > 0 ? '+' : '') + val.toFixed(2) + '%';
-        
+
         document.getElementById('val-capital').innerText = formatCurrency(metrics.final_capital);
         document.getElementById('val-initial').innerText = formatCurrency(metrics.initial_capital);
         document.getElementById('val-winrate').innerText = metrics.win_rate.toFixed(1) + '%';
-        document.getElementById('val-trades').innerText = metrics.total_trades;
+        document.getElementById('val-trades').innerText = metrics.closed_trades ?? metrics.total_trades;
 
         const roiBadge = document.getElementById('val-roi');
         roiBadge.innerText = formatPct(metrics.roi_pct);
@@ -55,10 +61,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     function updateChart(chartData) {
         const ctx = document.getElementById('portfolioChart').getContext('2d');
-        
+
         const labels = chartData.map(d => {
             const date = new Date(d.time);
-            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         });
         const values = chartData.map(d => d.value);
 
@@ -109,7 +115,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                     y: {
                         grid: { color: 'rgba(255, 255, 255, 0.05)', drawBorder: false },
                         ticks: {
-                            callback: function(value) {
+                            callback: function (value) {
                                 return '$' + value;
                             }
                         }
@@ -128,22 +134,78 @@ document.addEventListener("DOMContentLoaded", async () => {
         const tbody = document.getElementById('trades-body');
         tbody.innerHTML = '';
 
-        // Invertir para mostrar los más recientes arriba
-        trades.reverse().forEach(trade => {
+        trades.slice().reverse().forEach(trade => {
             const tr = document.createElement('tr');
-            
-            const date = new Date(trade.time);
-            const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            
-            const statusClass = trade.status === 'WIN' ? 'status-win' : 'status-loss';
+
+            const entryDate = new Date(trade.entry_time ?? trade.time);
+            const exitDate = new Date(trade.exit_time ?? trade.time);
+            const entryStr = entryDate.toLocaleDateString() + ' ' + entryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const exitStr = exitDate.toLocaleDateString() + ' ' + exitDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            const statusClass = trade.status && trade.status.startsWith('WIN') ? 'status-win' : 'status-loss';
             const pnlSign = trade.pnl >= 0 ? '+' : '';
-            
+            const marketLabel = getMarketLabel(trade);
+
             tr.innerHTML = `
-                <td>${dateStr}</td>
-                <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${trade.market}">${trade.market}</td>
-                <td>${(trade.prob * 100).toFixed(1)}%</td>
+                <td>${entryStr}</td>
+                <td>${exitStr}</td>
+                <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${marketLabel}">${marketLabel}</td>
+                <td>${((trade.probability ?? trade.prob) * 100).toFixed(1)}%</td>
+                <td>${formatCurrency(trade.entry_price)}</td>
+                <td>${formatCurrency(trade.exit_price)}</td>
                 <td>${formatCurrency(trade.bet_size)}</td>
                 <td class="${statusClass}">${pnlSign}${formatCurrency(trade.pnl)}</td>
+                <td>${trade.holding_period ?? '-'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function updateOpenPositions(positions) {
+        const tbody = document.getElementById('open-positions-body');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        if (!positions.length) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td colspan="6" class="empty-state">No open positions</td>';
+            tbody.appendChild(tr);
+            return;
+        }
+
+        positions.slice().reverse().forEach(position => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${position.trade_id}</td>
+                <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${position.question}">${position.question}</td>
+                <td>${formatCurrency(position.entry_price)}</td>
+                <td>${formatCurrency(position.bet_size)}</td>
+                <td>${(position.probability * 100).toFixed(1)}%</td>
+                <td>${position.edge.toFixed(4)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function updateJournal(journal) {
+        const tbody = document.getElementById('journal-body');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        journal.slice().reverse().forEach(trade => {
+            const tr = document.createElement('tr');
+            const marketLabel = getMarketLabel(trade);
+            tr.innerHTML = `
+                <td>${trade.trade_id}</td>
+                <td>${trade.market_id ?? 'Unknown'}</td>
+                <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${marketLabel}">${marketLabel}</td>
+                <td>${trade.status}</td>
+                <td>${formatCurrency(trade.entry_price)}</td>
+                <td>${formatCurrency(trade.exit_price)}</td>
+                <td>${formatCurrency(trade.pnl)}</td>
+                <td>${trade.holding_period}</td>
             `;
             tbody.appendChild(tr);
         });

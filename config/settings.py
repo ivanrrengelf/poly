@@ -39,8 +39,13 @@ class TradingConfig:
     min_edge_threshold: float = 0.05       # Edge mínimo para señal (5%)
     kelly_fraction: float = 0.25           # Fracción del Kelly Criterion
     max_position_pct: float = 0.10         # Máx 10% del capital por posición
+    max_trade_size_eur: float = 2.0        # Tope absoluto por operación
     execution_fee_pct: float = 0.002       # Coste por ejecución y salida
     slippage_pct: float = 0.001            # Slippage simulado por lado
+    holding_period_periods: int = 5        # Horizonte fijo para cerrar posición
+    min_entry_price: float = 0.10          # Evita contratos demasiado baratos
+    max_entry_price: float = 0.90          # Evita contratos demasiado caros
+    max_concurrent_positions: int = 3      # Limita el apilado de posiciones
     min_liquidity_usd: float = 1000.0
     min_volume_24h_usd: float = 500.0
     initial_capital: float = 100.0         # Capital inicial simulado ($100)

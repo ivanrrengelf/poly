@@ -56,6 +56,8 @@ def test_run_simulation_success(monkeypatch):
     assert "chart_data" in result
     assert "recent_trades" in result
     assert "runtime_seconds" in result["metrics"]
+    assert "entry_time" in result["recent_trades"][0]
+    assert "exit_time" in result["recent_trades"][0]
 
 
 def test_api_endpoint_returns_json(monkeypatch):
@@ -69,6 +71,7 @@ def test_api_endpoint_returns_json(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert "metrics" in body
+    assert "trade_journal" in body
 
 
 def test_api_health_endpoint():
